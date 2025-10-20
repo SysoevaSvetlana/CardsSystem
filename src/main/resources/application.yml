@@ -1,0 +1,58 @@
+#
+# application.yml — главный конфигурационный файл Spring Boot.
+
+#Что нужно сделать:
+#  - Указать настройки подключения к базе данных.
+#  - Указать порт приложения.
+#  - Настроить параметры безопасности и JWT.
+#  - Включить Swagger UI.
+
+spring:
+  profiles:
+    active: dev
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  datasource:
+    datasource:
+      url: jdbc:mysql://db:3306/bankdb?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      username: dev_user
+      password: dev_pass
+      driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate.format_sql: true
+
+server:
+  port: 8080
+
+jwt:
+  secret: devSecretKey123
+  expiration: 3600000 # 1 час
+
+logging:
+  level:
+    root: INFO
+    com.example.bankrest: DEBUG
+
+security:
+  password-encoder-strength: 10
+
+app:
+  card:
+    mask-pattern: "**** **** **** %s"
+
+swagger:
+  enabled: true
+liquibase:
+  change-log: classpath:db.migration/changelog-master.xml
+  enabled: true
+
