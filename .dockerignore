@@ -1,0 +1,51 @@
+# Игнорируем ненужные файлы при сборке Docker образа
+
+# Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.classpath
+.project
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Документация
+*.md
+docs/
+
+# Логи
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Временные файлы
+*.tmp
+*.bak
+*.swp
+*~
+
+# Переменные окружения
+.env
+.env.local
+.env.*.local
+

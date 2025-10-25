@@ -1,28 +1,23 @@
-# 
-# docker-compose.yml — определяет сервисы для разработки и тестирования.
-
-#Что нужно сделать:
-#  - Настроить сервисы для:
-#      - PostgreSQL (или MySQL) с начальной базой.
-#      - Приложения Spring Boot (если нужно).
-#  - Открыть нужные порты (например, 5432, 8080).
-#  - Настроить volume для хранения данных БД.
-
-version: '3.9'
-
 services:
   db:
     image: mysql:8.0
     container_name: bankdb
+    restart: always
     environment:
-      MYSQL_DATABASE: bankdb        # база данных
-      MYSQL_USER: dev_user          # пользователь
-      MYSQL_PASSWORD: dev_pass      # пароль
-      MYSQL_ROOT_PASSWORD: rootpass # root-пароль
+      MYSQL_DATABASE: bankdb
+      MYSQL_USER: dev_user
+      MYSQL_PASSWORD: dev_pass
+      MYSQL_ROOT_PASSWORD: rootpass
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpass"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
 
   app:
     build: .
@@ -33,9 +28,14 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/bankdb?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
       SPRING_DATASOURCE_USERNAME: dev_user
       SPRING_DATASOURCE_PASSWORD: dev_pass
-      SPRING_PROFILES_ACTIVE: dev
+      SPRING_LIQUIBASE_ENABLED: "true"
+      SPRING_LIQUIBASE_CHANGE_LOG: classpath:db/migration/changelog-master.xml
+      JASYPT_PASSWORD: ${JASYPT_PASSWORD:-mySecretEncryptionKey2024}
+      TOKEN_SIGNING_KEY: ${TOKEN_SIGNING_KEY:-53A73E5F1C4E0A2D3B5F2D784E6A1B423D6F247D1F6E5C3A596D635A75327855}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    restart: on-failure
 
 volumes:
   db_data:

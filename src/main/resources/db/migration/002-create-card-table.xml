@@ -6,27 +6,46 @@
         http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
 
     <changeSet id="2" author="dev">
+
         <createTable tableName="card">
             <column name="id" type="BIGINT" autoIncrement="true">
-                <constraints primaryKey="true"/>
+                <constraints primaryKey="true" nullable="false"/>
             </column>
-            <column name="number" type="VARCHAR(19)">
+
+            <!-- Поле encryptedNumber -->
+            <column name="encrypted_number" type="VARCHAR(255)">
                 <constraints nullable="false"/>
             </column>
+
+            <!-- Ссылка на владельца -->
             <column name="user_id" type="BIGINT">
                 <constraints nullable="false"/>
             </column>
+
+            <!-- Срок действия карты -->
             <column name="expiry_date" type="DATE"/>
+
+            <!-- Статус карты (Enum: ACTIVE, BLOCKED, EXPIRED и т.п.) -->
             <column name="status" type="VARCHAR(20)" defaultValue="ACTIVE"/>
-            <column name="balance" type="DECIMAL(15,2)" defaultValueNumeric="0.0"/>
+
+            <!-- Баланс карты -->
+            <column name="balance" type="DECIMAL(15,2)" defaultValueNumeric="0.00"/>
         </createTable>
+
 
         <addForeignKeyConstraint
                 baseTableName="card"
                 baseColumnNames="user_id"
-                referencedTableName="user"
+                referencedTableName="users"
                 referencedColumnNames="id"
                 constraintName="fk_card_user"/>
+        <addUniqueConstraint
+                tableName="card"
+                columnNames="encrypted_number"
+                constraintName="uk_card_encrypted_number"/>
+
+
     </changeSet>
 
 </databaseChangeLog>
+
