@@ -53,8 +53,7 @@ public interface CardRepository extends JpaRepository<Card, Long> {
     List<String> findAllEncryptedNumbers();
 
     /**
-     * Поиск карты по ID с пессимистической блокировкой для записи.
-     * Используется при переводах для предотвращения race conditions.
+     * Поиск карты по ID с  для записи.
      * Блокирует строку в БД до завершения транзакции.
      *
      * @param id ID карты

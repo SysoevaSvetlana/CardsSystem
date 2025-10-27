@@ -37,17 +37,15 @@ public class TransferService {
 
     /**
      * Выполнение перевода средств между картами.
-     * Использует pessimistic locking для предотвращения race conditions при параллельных переводах.
-     * Проверяет, что обе карты принадлежат текущему пользователю.
      *
      * @param currentUser текущий аутентифицированный пользователь
-     * @param dto данные перевода
+     * @param dto         данные перевода
      * @return результат перевода
      * @throws InvalidTransferAmountException если сумма перевода некорректна
-     * @throws CardNotFoundException если одна из карт не найдена
-     * @throws CardNotActiveException если одна из карт не активна
-     * @throws InsufficientFundsException если недостаточно средств на карте отправителя
-     * @throws CardException если попытка перевода с/на чужую карту
+     * @throws CardNotFoundException          если одна из карт не найдена
+     * @throws CardNotActiveException         если одна из карт не активна
+     * @throws InsufficientFundsException     если недостаточно средств на карте отправителя
+     * @throws CardException                  если попытка перевода с/на чужую карту
      */
     @Transactional
     public TransferResponseDto transferBetweenCards(User currentUser, TransferRequestDto dto) {
@@ -57,9 +55,6 @@ public class TransferService {
             throw new InvalidTransferAmountException();
         }
 
-        // Используем pessimistic locking для предотвращения race conditions
-        // Блокируем строки в БД до завершения транзакции
-        // Важно: блокируем карты в определенном порядке (по ID) для предотвращения deadlock
         Long fromCardId = dto.getFromCardId();
         Long toCardId = dto.getToCardId();
 
@@ -79,15 +74,15 @@ public class TransferService {
                     .orElseThrow(() -> new CardNotFoundException(fromCardId));
         }
 
-        // КРИТИЧЕСКАЯ ПРОВЕРКА БЕЗОПАСНОСТИ: обе карты должны принадлежать текущему пользователю
+        // обе карты должны принадлежать текущему пользователю
         if (!fromCard.getUser().getId().equals(currentUser.getId())) {
             log.warn("Security violation: User {} attempted to transfer from card {} owned by user {}",
-                currentUser.getId(), fromCard.getId(), fromCard.getUser().getId());
+                    currentUser.getId(), fromCard.getId(), fromCard.getUser().getId());
             throw new CardException("Нельзя переводить средства с чужой карты");
         }
         if (!toCard.getUser().getId().equals(currentUser.getId())) {
             log.warn("Security violation: User {} attempted to transfer to card {} owned by user {}",
-                currentUser.getId(), toCard.getId(), toCard.getUser().getId());
+                    currentUser.getId(), toCard.getId(), toCard.getUser().getId());
             throw new CardException("Нельзя переводить средства на чужую карту");
         }
 
@@ -102,9 +97,9 @@ public class TransferService {
             throw new InsufficientFundsException(fromCard.getId());
         }
 
-        // Логирование перевода для аудита
+
         log.info("Transfer initiated: user={}, fromCard={}, toCard={}, amount={}",
-            currentUser.getId(), fromCardId, toCardId, amount);
+                currentUser.getId(), fromCardId, toCardId, amount);
 
         fromCard.setBalance(fromCard.getBalance().subtract(amount));
         toCard.setBalance(toCard.getBalance().add(amount));
@@ -121,7 +116,7 @@ public class TransferService {
         transferRepository.save(transfer);
 
         log.info("Transfer completed successfully: transferId={}, user={}, amount={}",
-            transfer.getId(), currentUser.getId(), amount);
+                transfer.getId(), currentUser.getId(), amount);
 
         return mapToResponse(transfer);
     }

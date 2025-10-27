@@ -14,22 +14,14 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
 
-/**
- * Spring Bean для шифрования, дешифрования и маскировки номеров банковских карт.
- * Использует современный алгоритм AES-256-GCM вместо устаревшего PBEWithMD5AndDES.
- *
- * AES-256-GCM обеспечивает:
- * - Конфиденциальность (шифрование)
- * - Аутентичность (защита от подделки)
- * - Целостность (защита от изменения)
- */
+
 @Slf4j
 @Component
 public class CardNumberEncryptor {
 
     private static final String ALGORITHM = "AES/GCM/NoPadding";
-    private static final int GCM_TAG_LENGTH = 128; // 128 bits
-    private static final int GCM_IV_LENGTH = 12; // 12 bytes (96 bits) - рекомендовано для GCM
+    private static final int GCM_TAG_LENGTH = 128;
+    private static final int GCM_IV_LENGTH = 12;
 
     private final SecretKey secretKey;
     private final SecureRandom secureRandom;
@@ -81,7 +73,7 @@ public class CardNumberEncryptor {
         }
 
         try {
-            // Генерация случайного IV (Initialization Vector)
+            // Генерация случайного IV
             byte[] iv = new byte[GCM_IV_LENGTH];
             secureRandom.nextBytes(iv);
 
