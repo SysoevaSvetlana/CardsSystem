@@ -40,6 +40,9 @@ token:
 app:
   card:
     mask-pattern: "**** **** **** %s"
+  security:
+    encryption:
+      password: ${ENCRYPTION_PASSWORD:${JASYPT_PASSWORD}}
 
 swagger:
   enabled: true

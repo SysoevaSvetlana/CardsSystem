@@ -5,7 +5,6 @@ import com.example.bankcards.dto.CardCreateRequestDto;
 import com.example.bankcards.dto.CardResponseDto;
 import com.example.bankcards.entity.User;
 import com.example.bankcards.service.CardService;
-import com.example.bankcards.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -23,6 +22,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -35,7 +35,6 @@ import java.math.BigDecimal;
 public class CardController {
 
     private final CardService cardService;
-    private final UserService userService;
 
     // ----------------- ADMIN -----------------
 
@@ -152,10 +151,10 @@ public class CardController {
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     @GetMapping("/my")
     public ResponseEntity<Page<CardResponseDto>> getMyCards(
+            @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
             @Parameter(description = "Номер страницы (начиная с 0)") @RequestParam(name = "page", defaultValue = "0") int page,
             @Parameter(description = "Количество элементов на странице") @RequestParam(name = "size", defaultValue = "10") int size
     ) {
-        User currentUser = userService.getCurrentUser();
         Pageable pageable = PageRequest.of(page, size, Sort.by("id").descending());
         return ResponseEntity.ok(cardService.findUserCards(currentUser.getId(), pageable));
     }
@@ -170,8 +169,11 @@ public class CardController {
     })
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     @PatchMapping("/request-block")
-    public ResponseEntity<CardResponseDto> requestBlock(@Valid @RequestBody CardBlockRequestDto dto) {
-        return ResponseEntity.ok(cardService.requestBlock(dto));
+    public ResponseEntity<CardResponseDto> requestBlock(
+            @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
+            @Valid @RequestBody CardBlockRequestDto dto
+    ) {
+        return ResponseEntity.ok(cardService.requestBlock(currentUser, dto));
     }
 
     @Operation(
@@ -186,8 +188,9 @@ public class CardController {
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     @GetMapping("/{cardId}/balance")
     public ResponseEntity<BigDecimal> getBalance(
+        @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
         @Parameter(description = "ID карты", required = true) @PathVariable(name = "cardId") Long cardId
     ) {
-        return ResponseEntity.ok(cardService.getCardBalance(cardId));
+        return ResponseEntity.ok(cardService.getCardBalance(currentUser, cardId));
     }
 }

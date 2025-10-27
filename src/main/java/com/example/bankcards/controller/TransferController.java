@@ -2,8 +2,10 @@ package com.example.bankcards.controller;
 
 import com.example.bankcards.dto.TransferRequestDto;
 import com.example.bankcards.dto.TransferResponseDto;
+import com.example.bankcards.entity.User;
 import com.example.bankcards.service.TransferService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -15,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -44,14 +47,21 @@ public class TransferController {
             description = "Ошибка валидации или недостаточно средств"
         ),
         @ApiResponse(
+            responseCode = "403",
+            description = "Доступ запрещен (попытка перевода с/на чужую карту)"
+        ),
+        @ApiResponse(
             responseCode = "404",
             description = "Карта не найдена"
         )
     })
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     @PostMapping
-    public ResponseEntity<TransferResponseDto> transfer(@Valid @RequestBody TransferRequestDto dto) {
-        TransferResponseDto response = transferService.transferBetweenCards(dto);
+    public ResponseEntity<TransferResponseDto> transfer(
+            @Parameter(hidden = true) @AuthenticationPrincipal User currentUser,
+            @Valid @RequestBody TransferRequestDto dto
+    ) {
+        TransferResponseDto response = transferService.transferBetweenCards(currentUser, dto);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }

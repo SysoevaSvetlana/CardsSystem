@@ -7,7 +7,6 @@ import com.example.bankcards.exception.UserNotFoundException;
 import com.example.bankcards.exception.UsernameAlreadyExistsException;
 import com.example.bankcards.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
@@ -73,25 +72,13 @@ public class UserService {
     }
 
     /**
-     * Получение текущего пользователя
+     * Выдача прав администратора указанному пользователю.
      *
-     * @return текущий пользователь
-     */
-    public User getCurrentUser() {
-        // Получение имени пользователя из контекста Spring Security
-        var username = SecurityContextHolder.getContext().getAuthentication().getName();
-        return getByUsername(username);
-    }
-
-
-    /**
-     * Выдача прав администратора текущему пользователю.
-     *
+     * @param user пользователь
      * @deprecated Используйте {@link #assignRole(Long, Role)} вместо этого метода
      */
     @Deprecated
-    public void getAdmin() {
-        var user = getCurrentUser();
+    public void getAdmin(User user) {
         user.setRole(Role.ROLE_ADMIN);
         save(user);
     }

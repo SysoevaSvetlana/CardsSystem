@@ -6,6 +6,7 @@ import com.example.bankcards.entity.Card;
 import com.example.bankcards.entity.CardStatus;
 import com.example.bankcards.entity.Transfer;
 import com.example.bankcards.entity.User;
+import com.example.bankcards.exception.CardException;
 import com.example.bankcards.exception.CardNotActiveException;
 import com.example.bankcards.exception.CardNotFoundException;
 import com.example.bankcards.exception.InsufficientFundsException;
@@ -41,6 +42,9 @@ class TransferServiceTest {
     @Mock
     private CardRepository cardRepository;
 
+    @Mock
+    private com.example.bankcards.security.CardNumberEncryptor cardNumberEncryptor;
+
     @InjectMocks
     private TransferService transferService;
 
@@ -49,13 +53,6 @@ class TransferServiceTest {
     private Card fromCard;
     private Card toCard;
     private TransferRequestDto transferRequest;
-
-    @BeforeAll
-    static void setUpEnvironment() {
-        // Устанавливаем тестовый пароль для Jasypt
-        // Это необходимо для работы CardNumberEncryptor
-        System.setProperty("JASYPT_PASSWORD", "test-password-for-unit-tests");
-    }
 
     @BeforeEach
     void setUp() {
@@ -71,19 +68,21 @@ class TransferServiceTest {
         // Создаем карту отправителя
         fromCard = new Card();
         fromCard.setId(1L);
-        fromCard.setCardNumber("1234567812345678");
+        fromCard.setEncryptedNumber("encrypted_1234567812345678");
+        fromCard.setMaskedNumber("**** **** **** 5678");
         fromCard.setBalance(new BigDecimal("1000.00"));
         fromCard.setStatus(CardStatus.ACTIVE);
         fromCard.setUser(user1);
         fromCard.setExpiryDate(LocalDate.now().plusYears(2));
 
-        // Создаем карту получателя
+        // Создаем карту получателя (принадлежит тому же пользователю для успешных тестов)
         toCard = new Card();
         toCard.setId(2L);
-        toCard.setCardNumber("8765432187654321");
+        toCard.setEncryptedNumber("encrypted_8765432187654321");
+        toCard.setMaskedNumber("**** **** **** 4321");
         toCard.setBalance(new BigDecimal("500.00"));
         toCard.setStatus(CardStatus.ACTIVE);
-        toCard.setUser(user2);
+        toCard.setUser(user1); // Обе карты принадлежат user1
         toCard.setExpiryDate(LocalDate.now().plusYears(2));
 
         // Создаем запрос на перевод
@@ -91,14 +90,23 @@ class TransferServiceTest {
         transferRequest.setFromCardId(1L);
         transferRequest.setToCardId(2L);
         transferRequest.setAmount(new BigDecimal("100.00"));
+
+        // Настраиваем mock для cardNumberEncryptor
+        when(cardNumberEncryptor.mask(anyString())).thenAnswer(invocation -> {
+            String number = invocation.getArgument(0);
+            if (number.length() >= 4) {
+                return "**** **** **** " + number.substring(number.length() - 4);
+            }
+            return "****";
+        });
     }
 
     @Test
     @DisplayName("Успешный перевод между картами")
     void transferBetweenCards_Success() {
         // Arrange
-        when(cardRepository.findById(1L)).thenReturn(Optional.of(fromCard));
-        when(cardRepository.findById(2L)).thenReturn(Optional.of(toCard));
+        when(cardRepository.findByIdWithLock(1L)).thenReturn(Optional.of(fromCard));
+        when(cardRepository.findByIdWithLock(2L)).thenReturn(Optional.of(toCard));
 
 
         when(transferRepository.save(any(Transfer.class))).thenAnswer(invocation -> {
@@ -108,7 +116,7 @@ class TransferServiceTest {
         });
 
         // Act
-        TransferResponseDto result = transferService.transferBetweenCards(transferRequest);
+        TransferResponseDto result = transferService.transferBetweenCards(user1, transferRequest);
 
         // Assert
         assertThat(result).isNotNull();
@@ -136,7 +144,7 @@ class TransferServiceTest {
         transferRequest.setAmount(BigDecimal.ZERO);
 
         // Act & Assert
-        assertThatThrownBy(() -> transferService.transferBetweenCards(transferRequest))
+        assertThatThrownBy(() -> transferService.transferBetweenCards(user1, transferRequest))
                 .isInstanceOf(InvalidTransferAmountException.class)
                 .hasMessageContaining("Сумма перевода должна быть больше нуля");
 
@@ -153,7 +161,7 @@ class TransferServiceTest {
         transferRequest.setAmount(new BigDecimal("-50.00"));
 
         // Act & Assert
-        assertThatThrownBy(() -> transferService.transferBetweenCards(transferRequest))
+        assertThatThrownBy(() -> transferService.transferBetweenCards(user1, transferRequest))
                 .isInstanceOf(InvalidTransferAmountException.class);
 
         verify(cardRepository, never()).findById(any());
@@ -163,14 +171,14 @@ class TransferServiceTest {
     @DisplayName("Перевод с несуществующей карты отправителя - должно выбросить CardNotFoundException")
     void transferBetweenCards_FromCardNotFound_ThrowsException() {
         // Arrange
-        when(cardRepository.findById(1L)).thenReturn(Optional.empty());
+        when(cardRepository.findByIdWithLock(1L)).thenReturn(Optional.empty());
 
         // Act & Assert
-        assertThatThrownBy(() -> transferService.transferBetweenCards(transferRequest))
+        assertThatThrownBy(() -> transferService.transferBetweenCards(user1, transferRequest))
                 .isInstanceOf(CardNotFoundException.class)
                 .hasMessageContaining("Карта с ID 1 не найдена");
 
-        verify(cardRepository, times(1)).findById(1L);
+        verify(cardRepository, times(1)).findByIdWithLock(1L);
         verify(cardRepository, never()).save(any());
     }
 
@@ -178,16 +186,16 @@ class TransferServiceTest {
     @DisplayName("Перевод на несуществующую карту получателя - должно выбросить CardNotFoundException")
     void transferBetweenCards_ToCardNotFound_ThrowsException() {
         // Arrange
-        when(cardRepository.findById(1L)).thenReturn(Optional.of(fromCard));
-        when(cardRepository.findById(2L)).thenReturn(Optional.empty());
+        when(cardRepository.findByIdWithLock(1L)).thenReturn(Optional.of(fromCard));
+        when(cardRepository.findByIdWithLock(2L)).thenReturn(Optional.empty());
 
         // Act & Assert
-        assertThatThrownBy(() -> transferService.transferBetweenCards(transferRequest))
+        assertThatThrownBy(() -> transferService.transferBetweenCards(user1, transferRequest))
                 .isInstanceOf(CardNotFoundException.class)
                 .hasMessageContaining("Карта с ID 2 не найдена");
 
-        verify(cardRepository, times(1)).findById(1L);
-        verify(cardRepository, times(1)).findById(2L);
+        verify(cardRepository, times(1)).findByIdWithLock(1L);
+        verify(cardRepository, times(1)).findByIdWithLock(2L);
         verify(cardRepository, never()).save(any());
     }
 
@@ -196,11 +204,11 @@ class TransferServiceTest {
     void transferBetweenCards_FromCardBlocked_ThrowsException() {
         // Arrange
         fromCard.setStatus(CardStatus.BLOCKED);
-        when(cardRepository.findById(1L)).thenReturn(Optional.of(fromCard));
-        when(cardRepository.findById(2L)).thenReturn(Optional.of(toCard));
+        when(cardRepository.findByIdWithLock(1L)).thenReturn(Optional.of(fromCard));
+        when(cardRepository.findByIdWithLock(2L)).thenReturn(Optional.of(toCard));
 
         // Act & Assert
-        assertThatThrownBy(() -> transferService.transferBetweenCards(transferRequest))
+        assertThatThrownBy(() -> transferService.transferBetweenCards(user1, transferRequest))
                 .isInstanceOf(CardNotActiveException.class)
                 .hasMessageContaining("Карта с ID 1 не активна");
 
@@ -212,11 +220,11 @@ class TransferServiceTest {
     void transferBetweenCards_ToCardBlocked_ThrowsException() {
         // Arrange
         toCard.setStatus(CardStatus.BLOCKED);
-        when(cardRepository.findById(1L)).thenReturn(Optional.of(fromCard));
-        when(cardRepository.findById(2L)).thenReturn(Optional.of(toCard));
+        when(cardRepository.findByIdWithLock(1L)).thenReturn(Optional.of(fromCard));
+        when(cardRepository.findByIdWithLock(2L)).thenReturn(Optional.of(toCard));
 
         // Act & Assert
-        assertThatThrownBy(() -> transferService.transferBetweenCards(transferRequest))
+        assertThatThrownBy(() -> transferService.transferBetweenCards(user1, transferRequest))
                 .isInstanceOf(CardNotActiveException.class)
                 .hasMessageContaining("Карта с ID 2 не активна");
 
@@ -228,11 +236,11 @@ class TransferServiceTest {
     void transferBetweenCards_FromCardBlockRequested_ThrowsException() {
         // Arrange
         fromCard.setStatus(CardStatus.BLOCK_REQUESTED);
-        when(cardRepository.findById(1L)).thenReturn(Optional.of(fromCard));
-        when(cardRepository.findById(2L)).thenReturn(Optional.of(toCard));
+        when(cardRepository.findByIdWithLock(1L)).thenReturn(Optional.of(fromCard));
+        when(cardRepository.findByIdWithLock(2L)).thenReturn(Optional.of(toCard));
 
         // Act & Assert
-        assertThatThrownBy(() -> transferService.transferBetweenCards(transferRequest))
+        assertThatThrownBy(() -> transferService.transferBetweenCards(user1, transferRequest))
                 .isInstanceOf(CardNotActiveException.class);
 
         verify(cardRepository, never()).save(any());
@@ -243,11 +251,11 @@ class TransferServiceTest {
     void transferBetweenCards_InsufficientFunds_ThrowsException() {
         // Arrange
         transferRequest.setAmount(new BigDecimal("1500.00")); // Больше чем баланс (1000)
-        when(cardRepository.findById(1L)).thenReturn(Optional.of(fromCard));
-        when(cardRepository.findById(2L)).thenReturn(Optional.of(toCard));
+        when(cardRepository.findByIdWithLock(1L)).thenReturn(Optional.of(fromCard));
+        when(cardRepository.findByIdWithLock(2L)).thenReturn(Optional.of(toCard));
 
         // Act & Assert
-        assertThatThrownBy(() -> transferService.transferBetweenCards(transferRequest))
+        assertThatThrownBy(() -> transferService.transferBetweenCards(user1, transferRequest))
                 .isInstanceOf(InsufficientFundsException.class)
                 .hasMessageContaining("Недостаточно средств на карте с ID 1");
 
@@ -264,8 +272,8 @@ class TransferServiceTest {
     void transferBetweenCards_TransferAllBalance_Success() {
         // Arrange
         transferRequest.setAmount(new BigDecimal("1000.00")); // Весь баланс
-        when(cardRepository.findById(1L)).thenReturn(Optional.of(fromCard));
-        when(cardRepository.findById(2L)).thenReturn(Optional.of(toCard));
+        when(cardRepository.findByIdWithLock(1L)).thenReturn(Optional.of(fromCard));
+        when(cardRepository.findByIdWithLock(2L)).thenReturn(Optional.of(toCard));
 
         when(transferRepository.save(any(Transfer.class))).thenAnswer(invocation -> {
             Transfer transfer = invocation.getArgument(0);
@@ -274,7 +282,7 @@ class TransferServiceTest {
         });
 
         // Act
-        TransferResponseDto result = transferService.transferBetweenCards(transferRequest);
+        TransferResponseDto result = transferService.transferBetweenCards(user1, transferRequest);
 
         // Assert
         assertThat(result).isNotNull();
@@ -289,8 +297,8 @@ class TransferServiceTest {
     @DisplayName("Проверка сохранения Transfer с правильными данными")
     void transferBetweenCards_TransferEntitySavedCorrectly() {
         // Arrange
-        when(cardRepository.findById(1L)).thenReturn(Optional.of(fromCard));
-        when(cardRepository.findById(2L)).thenReturn(Optional.of(toCard));
+        when(cardRepository.findByIdWithLock(1L)).thenReturn(Optional.of(fromCard));
+        when(cardRepository.findByIdWithLock(2L)).thenReturn(Optional.of(toCard));
 
         ArgumentCaptor<Transfer> transferCaptor = ArgumentCaptor.forClass(Transfer.class);
         when(transferRepository.save(transferCaptor.capture())).thenAnswer(invocation -> {
@@ -300,7 +308,7 @@ class TransferServiceTest {
         });
 
         // Act
-        transferService.transferBetweenCards(transferRequest);
+        transferService.transferBetweenCards(user1, transferRequest);
 
         // Assert
         Transfer capturedTransfer = transferCaptor.getValue();
@@ -309,6 +317,40 @@ class TransferServiceTest {
         assertThat(capturedTransfer.getAmount()).isEqualByComparingTo(new BigDecimal("100.00"));
         assertThat(capturedTransfer.getStatus()).isEqualTo("SUCCESS");
         assertThat(capturedTransfer.getCreatedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Попытка перевода с чужой карты - должно выбросить CardException")
+    void transferBetweenCards_FromCardNotOwnedByUser_ThrowsException() {
+        // Arrange
+        fromCard.setUser(user2); // Карта принадлежит другому пользователю
+        when(cardRepository.findByIdWithLock(1L)).thenReturn(Optional.of(fromCard));
+        when(cardRepository.findByIdWithLock(2L)).thenReturn(Optional.of(toCard));
+
+        // Act & Assert
+        assertThatThrownBy(() -> transferService.transferBetweenCards(user1, transferRequest))
+                .isInstanceOf(CardException.class)
+                .hasMessageContaining("Нельзя переводить средства с чужой карты");
+
+        verify(cardRepository, never()).save(any());
+        verify(transferRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Попытка перевода на чужую карту - должно выбросить CardException")
+    void transferBetweenCards_ToCardNotOwnedByUser_ThrowsException() {
+        // Arrange
+        toCard.setUser(user2); // Карта принадлежит другому пользователю
+        when(cardRepository.findByIdWithLock(1L)).thenReturn(Optional.of(fromCard));
+        when(cardRepository.findByIdWithLock(2L)).thenReturn(Optional.of(toCard));
+
+        // Act & Assert
+        assertThatThrownBy(() -> transferService.transferBetweenCards(user1, transferRequest))
+                .isInstanceOf(CardException.class)
+                .hasMessageContaining("Нельзя переводить средства на чужую карту");
+
+        verify(cardRepository, never()).save(any());
+        verify(transferRepository, never()).save(any());
     }
 }
 
